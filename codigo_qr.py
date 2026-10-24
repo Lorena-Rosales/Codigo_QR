@@ -268,6 +268,118 @@ def acomodar_cadena(matriz, binario, reservada):
         hacia_arriba = not hacia_arriba
     return matriz
 
+# Validación de la cadena para que tenga formato de URL (no acepta, españos, acentos ni letra ñ)
+def validar_url(cadena, limite_caracteres=32):
+    if len(cadena) == 0:
+        return False, "El texto no puede estar vacio."
+    if len(cadena) > limite_caracteres:
+        return False, "Maximo " + str(limite_caracteres) + " caracteres (escribiste " + str(len(cadena)) + ")."
+    for c in cadena:
+        if c == " ":
+            return False, "No se permiten espacios."
+        if c not in DICCIONARIO:
+            return False, "Caracter no permitido: '" + c + "'"
+    return True, ""
+
+# 8 máscaras
+def condicion_mascara(mascara, fila, col):
+    match mascara:
+        case 0:
+            return (fila + col) % 2 == 0
+        case 1:
+            return fila % 2 == 0
+        case 2:
+            return col % 3 == 0
+        case 3:
+            return (fila + col) % 3 == 0
+        case 4:
+            return (fila // 2 + col // 3) % 2 == 0
+        case 5:
+            return (fila * col) % 2 + (fila * col) % 3 == 0
+        case 6:
+            return ((fila * col) % 2 + (fila * col) % 3) % 2 == 0
+        case _:
+            return ((fila + col) % 2 + (fila * col) % 3) % 2 == 0
+
+def aplicar_mascara_matriz(matriz, reservada, mascara):
+    tam = len(matriz)
+    matriz_con_mascara = []
+    for f in range(tam):
+        matriz_con_mascara.append(matriz[f][:])
+    for f in range(tam):
+        for c in range(tam):
+            if reservada[f][c] == 0 and condicion_mascara(mascara, f, c):
+                matriz_con_mascara[f][c] = 1 - matriz_con_mascara[f][c]
+    return matriz_con_mascara
+
+# Generación de bits que le dicen al lector qué nivel de corrección y qué máscara se usó
+def generar_bits_formato(nivel_bits, mascara):
+    datos = (nivel_bits << 3) | mascara
+    residuo = datos << 10
+    for i in range(14, 9, -1):
+        if (residuo >> i) & 1:
+            residuo ^= 0x537 << (i - 10)
+    bits = ((datos << 10) | residuo) ^ 0x5412
+    return format(bits, '015b')
+
+def colocar_bits_formato(matriz, formato):
+    posiciones1 = [(8,0),(8,1),(8,2),(8,3),(8,4),(8,5),(8,7),(8,8),(7,8),(5,8),(4,8),(3,8),(2,8),(1,8),(0,8)]
+    posiciones2 = [(24,8),(23,8),(22,8),(21,8),(20,8),(19,8),(18,8),(8,17),(8,18),(8,19),(8,20),(8,21),(8,22),(8,23),(8,24)]
+    for i in range(15):
+        fila, col = posiciones1[i]
+        matriz[fila][col] = int(formato[i])
+        fila, col = posiciones2[i]
+        matriz[fila][col] = int(formato[i])
+    return matriz
+
+# Coloca una calificación a una matriz con las 4 reglas de la norma
+def calcular_penalizacion(matriz):
+    n = len(matriz)
+    puntos = 0
+    # Regla 1: Busca 5 o más módulos del mismo color seguidos en una fila o en una columna
+    for num_linea in range(n):
+        for linea in ([matriz[num_linea][col] for col in range(n)], [matriz[fila][num_linea] for fila in range(n)]):
+            racha = 1
+            for i in range(1, n):
+                if linea[i] == linea[i - 1]:
+                    racha += 1
+                else:
+                    if racha >= 5:
+                        puntos += 3 + (racha - 5)
+                    racha = 1
+            if racha >= 5:
+                puntos += 3 + (racha - 5)
+    # Regla 2: Busca bloques de 2x2 del mismo color
+    for fila in range(n - 1):
+        for col in range(n - 1):
+            if matriz[fila][col] == matriz[fila][col+1] == matriz[fila+1][col] == matriz[fila+1][col+1]:
+                puntos += 3
+    # Regla 3: Busca una figura parecido al patrón de posición (1011101 con 4 módulos blancos al lado)
+    patron_buscador = [1, 0, 1, 1, 1, 0, 1]
+    for num_linea in range(n):
+        for linea in ([matriz[num_linea][col] for col in range(n)], [matriz[fila][num_linea] for fila in range(n)]):
+            for i in range(n - 6):
+                if linea[i:i+7] == patron_buscador:
+                    if (i >= 4 and linea[i-4:i] == [0,0,0,0]) or (i + 11 <= n and linea[i+7:i+11] == [0,0,0,0]):
+                        puntos += 40
+    # Regla 4: Busca qué porcentaje del QR es negro
+    modulos_negros = sum(sum(fila) for fila in matriz)
+    porcentaje = modulos_negros * 100 / (n * n)
+    puntos += int(abs(porcentaje - 50) // 5) * 10
+    return puntos
+
+# Prueba las 8 máscaras, al calcular la penalziación se queda con la de menos puntos.
+def seleccionar_mascara(matriz, reservada, nivel_bits):
+    mejor_mascara, mejor_penalizacion, mejor_matriz, tabla = 0, None, None, []
+    for mascara in range(8):
+        matriz_candidata = aplicar_mascara_matriz(matriz, reservada, mascara)
+        matriz_candidata = colocar_bits_formato(matriz_candidata, generar_bits_formato(nivel_bits, mascara))
+        penalizacion = calcular_penalizacion(matriz_candidata)
+        tabla.append(penalizacion)
+        if mejor_penalizacion is None or penalizacion < mejor_penalizacion:
+            mejor_mascara, mejor_penalizacion, mejor_matriz = mascara, penalizacion, matriz_candidata
+    return mejor_mascara, mejor_matriz, tabla
+
 def imprimir_matriz(matriz):
     for fila in matriz:
         linea = ''
@@ -279,10 +391,16 @@ def imprimir_matriz(matriz):
         print(linea)
 
 
-def main():
-    url = input("Introduce la URL: ")
+def generar_qr():
+    while True:
+        url = input("\nIntroduce la URL: ")
+        valido, motivo = validar_url(url)
+        if valido:
+            break
+        print ("Error: ", motivo)
+
     vector_ascii = guardar_vector_ascii(url)
-    print("Vector ASCII:", vector_ascii)
+    print("\nVector ASCII:", vector_ascii)
 
     binario = iniciar_cadena(vector_ascii)
     binario = cadena_bin(binario, vector_ascii)
@@ -295,7 +413,7 @@ def main():
     for valor in datos_completos:
         binario_completo+=format(valor, '08b')
 
-    print("Cadena de binario: ", binario_completo)
+    print("\nCadena de binario: ", binario_completo)
 
     matriz = crear_matriz()
     reservada = crear_matriz()
@@ -308,7 +426,30 @@ def main():
     matriz, reservada = patron_alineamiento(matriz, reservada)
     matriz, reservada = reservar_formato(matriz, reservada)
     matriz = acomodar_cadena(matriz, binario_completo, reservada)
-    print("Matriz 25x25:")
-    imprimir_matriz(matriz)
+
+    mejor, matriz_final, tabla = seleccionar_mascara(matriz, reservada, 1)
+    print("\nPenalización:", tabla)
+    print("\nMáscara seleccionada:", mejor)
+
+    print("\nMatriz 25x25:\n")
+    imprimir_matriz(matriz_final)
+
+def mostrar_menu():
+    print()
+    print("-----CÓDIGO QR------")
+    print("1. Generar Código QR")
+    print("2. Salir")
+
+def main():
+    while True:
+        mostrar_menu()
+        opcion = input("Selecciona una opción: ").strip()
+
+        if opcion == "1":
+            generar_qr()
+        elif opcion == "2":
+            break
+        else:
+            print("Opcion no válida")
 
 main()
