@@ -1,3 +1,10 @@
+# PROYECTO QR
+# INTEGRANTES:
+# - Angel Oziel Carrillo Díaz de León     ID: 500062              
+# - Ana Lorena Rosales Delgado            ID: 296045 
+# - Luis Ramiro Vázquez López             ID: 300087 
+# 7° A         
+
 # 1. Convertir texto a ASCII y guardarlo en un vector
 CARACTERES_ASCII = (
     " !\"#$%&'()*+,-./0123456789:;<=>?@"
@@ -5,6 +12,7 @@ CARACTERES_ASCII = (
     "abcdefghijklmnopqrstuvwxyz{|}~"
 )
 
+# Construye el diccionario de carácteres ASCII
 def generar_diccionario():
     diccionario = {}
     posicion = 32
@@ -15,12 +23,14 @@ def generar_diccionario():
 
 DICCIONARIO = generar_diccionario()   
 
+# Regresa el valor ASCII de un carácter, o -1 si no está en el diccionario
 def valor_ascii(c):
     if c in DICCIONARIO:
         return DICCIONARIO[c]
     else:
-        return -1                                 
-
+        return -1             
+                        
+# Convierte cada carácter del texto en su valor ASCII y los guarda en un vector
 def guardar_vector_ascii(url):
     vector_ascii = []
     for c in url:
@@ -33,6 +43,7 @@ def iniciar_cadena(vector_ascii):
     binario += format(len(vector_ascii), '08b')
     return binario
 
+# Agrega a la cadena el valor ASCII de cada carácter en 8 bits
 def cadena_bin(binario, vector_ascii):
     for valor in vector_ascii:
         if valor >= 0 and valor <= 255:
@@ -42,6 +53,7 @@ def cadena_bin(binario, vector_ascii):
             return ""
     return(binario)
 
+# Completa la cadena hasta la capacidad de la versión 2-L (34 bytes = 272 bits)
 def completar_bin(binario, capacidadBytes=34):
     capacidadBits = capacidadBytes*8
     faltan = capacidadBits - len(binario)
@@ -49,12 +61,12 @@ def completar_bin(binario, capacidadBytes=34):
     if faltan < 0:
         print("ERROR Los datos son mayores a la capacidad")
         return ""
-    binario += "0" * min(4, faltan)
+    binario += "0" * min(4, faltan)  # Paso 1: Terminador (hasta 4 ceros)
 
-    while len(binario) % 8 != 0:
+    while len(binario) % 8 != 0:    # Paso 2: Ceros hasta completar un byte
         binario += "0"
 
-    rellenos = ("11101100", "00010001")
+    rellenos = ("11101100", "00010001") # Paso 3: Bytes de relleno alternados (236 y 17 en decimal)
     indice = 0
 
     while len(binario) < capacidadBits:
@@ -62,15 +74,17 @@ def completar_bin(binario, capacidadBytes=34):
         indice = 1 - indice
     return binario
 
+# Separa la cadena de bits en grupos de 8 y convierte cada grupo a un número (0 a 255)
 def convertir_bytes(binario):
     datos = []
     for i in range(0, len(binario), 8):
         datos.append(int(binario[i:i + 8], 2))
     return datos
 
+# Calcula los bytes de corrección Reed-Solomon: Construye el polinomio generador y divide los datos entre él.
 def reed_solomon(datos, cantidadError=10):
-    generador = [1]
-    raiz = 1
+    generador = [1] # Coeficientes del polinomio generador 
+    raiz = 1        # Potencia actual de alfa (alfa^0 = 1)
 
     # Crear el polinomio generador
     for i in range(cantidadError):
@@ -82,7 +96,8 @@ def reed_solomon(datos, cantidadError=10):
             a = generador[j]
             b = raiz
             producto = 0
-
+            # Multiplicación en GF(256): producto = a * b. Se suma con XOR y,
+            # cuando a pasa de 8 bits, se reduce con el polinomio primitivo 0x11D
             while b:
                 if b & 1:
                     producto ^= a
@@ -95,6 +110,7 @@ def reed_solomon(datos, cantidadError=10):
             nuevo[j + 1] ^= producto
 
         generador = nuevo
+         # Siguiente potencia de alfa: raiz = raiz * 2 
         a = raiz
         b = 2
         producto = 0
@@ -109,14 +125,16 @@ def reed_solomon(datos, cantidadError=10):
 
             b >>= 1
         raiz = producto
+    print("Polinomio generador:", generador)
 
-    # Calcular los bytes de correccion
+    # Calcular los bytes de corrección
     resultado = datos + [0] * cantidadError
-
+    
+    # División polinomial
     for i in range(len(datos)):
         coeficiente = resultado[i]
 
-        if coeficiente != 0:
+        if coeficiente != 0: # Por  cada byte de datos distinto de cero se resta el generador multiplicado por ese byte
             for j in range(len(generador)):
                 a = generador[j]
                 b = coeficiente
@@ -132,7 +150,27 @@ def reed_solomon(datos, cantidadError=10):
 
                     b >>= 1
                 resultado[i + j] ^= producto
-    return resultado[len(datos):]
+    return resultado[len(datos):]   # Se regresa el residuo (bytes de corrección)
+
+# Valida Reed-Solomon con un ejemplo conocido (HELLO WORLD)
+def validar_reed_solomon():
+    # Ejemplo "HELLO WORLD" (version 1-M)
+    datos = [32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17]
+    esperado = [196, 35, 39, 119, 235, 215, 231, 226, 93, 23]
+    print()
+    print("-- Validación de Reed-Solomon --")
+    print("Ejemplo conocido : Texto 'HELLO WORLD', version 1, nivel M")
+    print("Palabras de datos (", len(datos), "):", datos)
+    print("Palabras de corrección a generar:", len(esperado))
+    print()
+    obtenido = reed_solomon(datos, len(esperado))
+    print()
+    print("Esperado:", esperado)
+    print("Obtenido:", obtenido)
+    if obtenido == esperado:
+        print("Reed-Solomon correcto: Los", len(esperado), "bytes coinciden con el ejemplo conocido")
+    else:
+        print("Reed-Solomon incorrecto: No coincide con el ejemplo conocido")
 
 #3 Acomodar la cadena en la matriz 25x25
 def crear_matriz(tamano=25):
@@ -141,6 +179,7 @@ def crear_matriz(tamano=25):
         matriz.append([0] * tamano)
     return matriz
 
+# Dibuja un patrón de búsqueda de 7x7 con su separador blanco y reserva esos módulos
 def patron_busqueda(matriz, reservada, filaInicial, columnaInicial):
     tam = len(matriz)
 
@@ -177,7 +216,8 @@ def patron_temporalizacion(matriz, reservada):
             valor = 1
         else:
             valor = 0
-
+        # Líneas alternadas negro/blanco en la fila 6 y la columna 6 entre los patrones de búsqueda.
+        # Los módulos pares son negros y los impares blancos.
         if reservada[6][i] == 0:
             matriz[6][i] = valor
             reservada[6][i] = 1
@@ -187,6 +227,7 @@ def patron_temporalizacion(matriz, reservada):
 
     return matriz, reservada
 
+# Patrón de alineamiento: Cuadro de 5x5 centrado en (18, 18)
 def patron_alineamiento(matriz, reservada):
     centroFila = 18
     centroColumna = 18
@@ -206,6 +247,7 @@ def patron_alineamiento(matriz, reservada):
             reservada[fila][columna] = 1
     return matriz, reservada
 
+# Reserva las zonas de formato (2 copias de 15 bits) y el módulo oscuro.
 def reservar_formato(matriz, reservada):
     tam = len(matriz)
 
@@ -238,6 +280,7 @@ def reservar_formato(matriz, reservada):
 
     return matriz, reservada
 
+# Inserta los bits en zigzag
 def acomodar_cadena(matriz, binario, reservada):
     n = len(matriz)
     i = 0
@@ -284,21 +327,21 @@ def validar_url(cadena, limite_caracteres=32):
 # 8 máscaras
 def condicion_mascara(mascara, fila, col):
     match mascara:
-        case 0:
+        case 0: # Tablero de ajedrez: Se invierte si fila + columna es par
             return (fila + col) % 2 == 0
-        case 1:
+        case 1: # Franjas horizontales: Filas pares. Una fila negra, una vacía, alternadas
             return fila % 2 == 0
-        case 2:
+        case 2:  # Franjas verticales: Una de cada 3 columnas negra
             return col % 3 == 0
-        case 3:
+        case 3: # Diagonales cada tres módulos
             return (fila + col) % 3 == 0
-        case 4:
+        case 4: # Bloques de 2 filas por 3 columnas alternando 
             return (fila // 2 + col // 3) % 2 == 0
-        case 5:
+        case 5: # La fila 0 y la columna 0 llenas, con puntos y cruces que se repiten en el resto
             return (fila * col) % 2 + (fila * col) % 3 == 0
-        case 6:
+        case 6: # Como la 5, pero las cruces se ven rellenas, formando bloques pequeños
             return ((fila * col) % 2 + (fila * col) % 3) % 2 == 0
-        case _:
+        case _: # Mezcla de líneas punteadas y bloques en diagonal
             return ((fila + col) % 2 + (fila * col) % 3) % 2 == 0
 
 def aplicar_mascara_matriz(matriz, reservada, mascara):
@@ -312,7 +355,7 @@ def aplicar_mascara_matriz(matriz, reservada, mascara):
                 matriz_con_mascara[f][c] = 1 - matriz_con_mascara[f][c]
     return matriz_con_mascara
 
-# Generación de bits que le dicen al lector qué nivel de corrección y qué máscara se usó
+# Generación de los 15 bits que le dicen al lector qué nivel de corrección y qué máscara se usó
 def generar_bits_formato(nivel_bits, mascara):
     datos = (nivel_bits << 3) | mascara
     residuo = datos << 10
@@ -322,6 +365,7 @@ def generar_bits_formato(nivel_bits, mascara):
     bits = ((datos << 10) | residuo) ^ 0x5412
     return format(bits, '015b')
 
+# Escribe los 15 bits de formato en sus dos posiciones de la matriz
 def colocar_bits_formato(matriz, formato):
     posiciones1 = [(8,0),(8,1),(8,2),(8,3),(8,4),(8,5),(8,7),(8,8),(7,8),(5,8),(4,8),(3,8),(2,8),(1,8),(0,8)]
     posiciones2 = [(24,8),(23,8),(22,8),(21,8),(20,8),(19,8),(18,8),(8,17),(8,18),(8,19),(8,20),(8,21),(8,22),(8,23),(8,24)]
@@ -390,8 +434,9 @@ def imprimir_matriz(matriz):
                 linea += '  '
         print(linea)
 
-
+# Flujo completo de un QR
 def generar_qr():
+    # Etapa 1: Convertir la URL a ASCII y armar la cadena de bits
     while True:
         url = input("\nIntroduce la URL: ")
         valido, motivo = validar_url(url)
@@ -406,6 +451,8 @@ def generar_qr():
     binario = cadena_bin(binario, vector_ascii)
     binario = completar_bin(binario)
     datos = convertir_bytes(binario)
+
+    # Etapa 2: Calcular los bytes de corrección con Reed-Solomon
     correccion = reed_solomon(datos)
 
     datos_completos = datos + correccion
@@ -413,32 +460,52 @@ def generar_qr():
     for valor in datos_completos:
         binario_completo+=format(valor, '08b')
 
+    print("\nPalabras de datos (", len(datos), "):", datos)
+    print("Palabras de correccion (", len(correccion), "):", correccion)
+    print("Secuencia final (", len(datos_completos), "):", datos_completos)
     print("\nCadena de binario: ", binario_completo)
 
+    # Etapa 3: Crear la matriz y colocar los patrones fijos
     matriz = crear_matriz()
     reservada = crear_matriz()
-
     matriz, reservada = patron_busqueda(matriz, reservada, 0, 0)
     matriz, reservada = patron_busqueda(matriz, reservada, 0, 18)
     matriz, reservada = patron_busqueda(matriz, reservada, 18, 0)
-
     matriz, reservada = patron_temporalizacion(matriz, reservada)
     matriz, reservada = patron_alineamiento(matriz, reservada)
     matriz, reservada = reservar_formato(matriz, reservada)
-    matriz = acomodar_cadena(matriz, binario_completo, reservada)
+    print("\nModulos reservados (negro = reservado):\n")
+    imprimir_matriz(reservada)
 
+    # Etapa 4: Insertar los datos en zigzag 
+    matriz_solo_datos = [fila[:] for fila in matriz]
+    matriz_solo_datos = acomodar_cadena(matriz_solo_datos, binario, reservada)
+    print("\nMatriz con datos antes de Reed-Solomon:\n")
+    imprimir_matriz(matriz_solo_datos)
+    matriz = acomodar_cadena(matriz, binario_completo, reservada)
+    print("\nMatriz con datos y Reed-Solomon antes del enmascaramiento:\n")
+    imprimir_matriz(matriz)
+    
+    # Etapa 5: Seleccionar la mejor máscara y aplicarla
     mejor, matriz_final, tabla = seleccionar_mascara(matriz, reservada, 1)
     print("\nPenalización:", tabla)
     print("\nMáscara seleccionada:", mejor)
 
-    print("\nMatriz 25x25:\n")
+    prueba = aplicar_mascara_matriz(matriz, reservada, mejor) # Comprobación: La máscara no debe alterar los módulos funcionales
+    alterados = sum(1 for f in range(25) for c in range(25) if reservada[f][c] == 1 and prueba[f][c] != matriz[f][c])
+    invertidos = sum(1 for f in range(25) for c in range(25) if reservada[f][c] == 0 and prueba[f][c] != matriz[f][c])
+    print("Modulos funcionales alterados por la mascara:", alterados)
+    print("Modulos de datos invertidos por la mascara:", invertidos)
+    
+    print("\nMatriz QR final enmascarada (de 25x25):\n")
     imprimir_matriz(matriz_final)
 
 def mostrar_menu():
     print()
     print("-----CÓDIGO QR------")
     print("1. Generar Código QR")
-    print("2. Salir")
+    print("2. Validar Reed-Solomon")
+    print("3. Salir")
 
 def main():
     while True:
@@ -448,6 +515,8 @@ def main():
         if opcion == "1":
             generar_qr()
         elif opcion == "2":
+            validar_reed_solomon()
+        elif opcion == "3":
             break
         else:
             print("Opcion no válida")
